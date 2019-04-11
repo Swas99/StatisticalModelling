@@ -1,0 +1,208 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(zoo)
+library(httr)
+library(readr)
+library(caret)
+library(ggpubr)
+library(plotly)
+library(mclust)
+library(ggplot2)
+library(reshape)
+library(stringr)
+library(MCMCpack)
+library(BayesLCA)
+library(jsonlite)
+library(tidyverse)
+library(xgboost)
+library(party)
+library(randomForest)
+
+#install.packages("xgboost")
+```
+
+```{r}
+
+##Business_Toronto_Restaurant.json
+path = "C:/Users/Swastik/Desktop/MastersDegree_CS/Semester_2/AppliedStatisticalModelling/ass_2/data/Business_Toronto_Restaurant.json"
+df_toronto   <- stream_in(file(path), flatten = TRUE)
+#Keep only Restaurants
+df_toronto_2 <- df_toronto[str_detect(df_toronto$categories, "Restaurants|restaurant"),] 
+
+#Mark all operating day with a single value
+df_toronto_2$hours.Sunday[!is.na(df_toronto_2$hours.Sunday)] <- 99
+df_toronto_2$hours.Monday[!is.na(df_toronto_2$hours.Monday)] <- 99
+df_toronto_2$hours.Tuesday[!is.na(df_toronto_2$hours.Tuesday)] <- 99
+df_toronto_2$hours.Wednesday[!is.na(df_toronto_2$hours.Wednesday)] <- 99
+df_toronto_2$hours.Thursday[!is.na(df_toronto_2$hours.Thursday)] <- 99
+df_toronto_2$hours.Friday[!is.na(df_toronto_2$hours.Friday)] <- 99
+df_toronto_2$hours.Saturday[!is.na(df_toronto_2$hours.Saturday)] <- 99
+
+
+
+#Replace NA
+df_toronto_2[is.na(df_toronto_2)] <- -1
+
+#respresent categorical variables used in regression as numeric factors
+df_toronto_2[,3] <- as.numeric(factor(df_toronto_2[,3]))
+for(i in 7:9)#9 can be changed to 9->10 here
+  df_toronto_2[,i] <- as.numeric(factor(df_toronto_2[,i]))
+
+for(i in 14:93)
+  df_toronto_2[,i] <- as.numeric(factor(df_toronto_2[,i]))
+
+#Check for single-valued cols
+for(i in 1:93)
+{
+  if(length(( unique( df_toronto_2[,i]) )) > 2)
+  {
+      #print(colnames(df_toronto_2)[i])
+      #print(length(( unique( df_toronto_2[,i]) )))
+  }
+}
+```
+
+```{r}
+x <- df_toronto_2
+```
+
+```{r}
+X
+X <- data.frame(x$longitude)
+X["latitude"] <- x$latitude
+X["neighborhood"] <- x$neighborhood
+
+#X["stars"] <- x$stars
+#X["longitude"] <- x$longitude
+#X["neighborhood"] <- x$neighborhood
+#X["attributes.BusinessAcceptsCreditCards"] <- x$attributes.BusinessAcceptsCreditCards
+#X["attributes.GoodForKids"] <- x$attributes.GoodForKids
+#X["attributes.WheelchairAccessible"] <- x$attributes.WheelchairAccessible
+#X["attributes.Caters"] <- x$attributes.Caters
+#X["attributes.WiFi"] <- x$attributes.WiFi
+#X["is_open"] <- x$is_open
+#X <- within(X, rm(x.stars))
+
+X <- X[X$neighborhood == 14 | X$neighborhood == 33| X$neighborhood == 20,]
+X <- within(X, rm(neighborhood))
+X
+
+nlevels(factor((x$neighborhood)))
+X
+
+fit <- Mclust(X)
+plot(fit, what = "BIC")
+plot(fit, what = "classification")
+plot(fit, what = "uncertainty")
+fit$parameters
+fit$BIC
+
+fit1 <- Mclust(X, G =73, modelNames = "EII")
+plot(fit1, what = "classification")
+plot(fit1, what = "uncertainty")
+
+
+fit$parameters$pro
+fit$parameters$mean
+```
+```{r}
+X
+X2 <- data.frame(x$neighborhood)  
+nlevels(factor((x$neighborhood)))
+X2$x.neighborhood <- factor(X2$x.neighborhood)
+fit2 <- Mclust(X2, G=18)
+plot(fit2, what = "BIC")
+plot(fit2, what = "classification")
+
+fit2$parameters
+fit2$BIC
+
+fit2_2 <- Mclust(X2, G =73, modelNames = "EII")
+plot(fit2_2, what = "classification")
+plot(fit2_2, what = "uncertainty")
+```
+
+
+
+```{r}
+  
+ 
+
+#X["stars"] <- x$stars
+#X["neighborhood"] <- x$neighborhood
+#X["attributes.BusinessAcceptsCreditCards"] <- x$attributes.BusinessAcceptsCreditCards
+#X["attributes.GoodForKids"] <- x$attributes.GoodForKids
+#X["attributes.WheelchairAccessible"] <- x$attributes.WheelchairAccessible
+#X["attributes.Caters"] <- x$attributes.Caters
+#X["attributes.WiFi"] <- x$attributes.WiFi
+#X["is_open"] <- x$is_open
+#X <- within(X, rm(x.stars))
+
+#X <- X[X$neighborhood == 'Leslieville' | X$neighborhood == 'Scarborough'| X$neighborhood == 'Downtown Core',]
+#X <- within(X, rm(neighborhood))
+
+x3 <- df_toronto
+X <- data.frame(x3$is_open)
+X["attributes.Alcohol"] <- x3$attributes.Alcohol
+X["attributes.WiFi"] <- x3$attributes.WiFi
+X["attributes.Caters"] <- x3$attributes.Caters
+X["good_rating"] <- x3$stars
+
+X$attributes.Caters
+
+X$attributes.Alcohol[X$attributes.Alcohol == "full_bar"] <- 1
+X$attributes.Alcohol[X$attributes.Alcohol == "beer_and_wine"] <- 1
+X$attributes.Alcohol[X$attributes.Alcohol != 1] <- 0
+
+X$attributes.WiFi[X$attributes.WiFi == "free"] <- 1
+X$attributes.WiFi[X$attributes.WiFi != 1] <- 0
+
+X$good_rating[X$good_rating < 4.0 ] <- 0
+X$good_rating[X$good_rating != 0] <- 1
+
+X$good_rating[is.na(X$good_rating)] <- 0
+X$attributes.WiFi[is.na(X$attributes.WiFi)] <- 0
+X$attributes.Caters[is.na(X$attributes.Caters)] <- 0
+X$attributes.Alcohol[is.na(X$attributes.Alcohol)] <- 0
+
+X$good_rating <- as.numeric(X$good_rating)
+X$attributes.WiFi <- as.numeric(X$attributes.WiFi)
+X$attributes.Caters <- as.numeric(X$attributes.Caters)
+X$attributes.Alcohol <- as.numeric(X$attributes.Alcohol)
+X 
+unique(X$x3.is_open)
+unique(X$good_rating)
+unique(X$attributes.WiFi)
+unique(X$attributes.Caters)
+unique(X$attributes.Alcohol)
+
+apply(X, 2, mean)
+barplot(apply(X, 2, mean))
+fit_lca <- blca.em(X, 2, restarts = 2, verbose = FALSE)
+print(fit_lca)
+
+fit_lca
+#plot(fit_lca, which = 1)
+#plot(fit_lca, which = 5)
+
+ 
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,240 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+compare_m_gibbs <- function(y, ind, maxiter = 5000)
+{
+  
+### weakly informative priors
+a0 <- 1/2 ; b0 <- 50 ## tau_w hyperparameters
+eta0 <-1/2 ; t0 <- 50 ## tau_b hyperparameters
+mu0<-50 ; gamma0 <- 1/25
+###
+a0 <- 1.9 ; b0 <- 1 ## tau_w hyperparameters
+eta0 <-1/2 ; t0 <- 5 ## tau_b hyperparameters
+mu0<-3.5 ; gamma0 <- 1.25
+###
+
+
+
+### starting values
+m <- nlevels(ind)
+ybar <- theta <- tapply(y, ind, mean)
+
+temp = tapply(y, ind, var)
+temp = temp[!is.na(temp)]
+tau_w <- 1/mean(temp) ##within group precision
+mu <- mean(theta)
+tau_b <-var(theta) ##between group precision
+n_m <- tapply(y, ind, length)
+an <- a0 + sum(n_m)/2
+###
+
+### setup MCMC
+theta_mat <- matrix(0, nrow=maxiter, ncol=m)
+mat_store <- matrix(0, nrow=maxiter, ncol=3)
+###
+### MCMC algorithm
+for(s in 1:maxiter) 
+{
+  
+  # sample new values of the thetas
+  for(j in 1:m) 
+  {
+    taun <- n_m[j] * tau_w + tau_b
+    thetan <- (ybar[j] * n_m[j] * tau_w + mu * tau_b) / taun
+    theta[j]<-rnorm(1, thetan, 1/sqrt(taun))
+  }
+  
+  #sample new value of tau_w
+  ss <- 0
+  for(j in 1:m){
+    ss <- ss + sum((y[ind == j] - theta[j])^2)
+  }
+  bn <- b0 + ss/2
+  tau_w <- rgamma(1, an, bn)
+  
+  #sample a new value of mu
+  gammam <- m * tau_b + gamma0
+  mum <- (mean(theta) * m * tau_b + mu0 * gamma0) / gammam
+  mu <- rnorm(1, mum, 1/ sqrt(gammam)) 
+  
+  # sample a new value of tau_b
+  etam <- eta0 + m/2
+  tm <- t0 + sum((theta-mu)^2)/2
+  tau_b <- rgamma(1, etam, tm)
+  
+  #store results
+  theta_mat[s,] <- theta
+  mat_store[s, ] <- c(mu, tau_w, tau_b)
+}
+colnames(mat_store) <- c("mu", "tau_w", "tau_b")
+return(list(params = mat_store, theta = theta_mat))
+}
+```
+
+```{r}
+library(zoo)
+library(httr)
+library(readr)
+library(ggpubr)
+library(plotly)
+library(mclust)
+library(ggplot2)
+library(reshape)
+library(stringr)
+library(MCMCpack)
+library(BayesLCA)
+library(jsonlite)
+library(tidyverse)
+
+#install.packages("ggpubr")
+```
+
+```{r}
+
+##Business_Toronto_Restaurant.json
+path = "C:/Users/Swastik/Desktop/MastersDegree_CS/Semester_2/AppliedStatisticalModelling/ass_2/data/Business_Toronto_Restaurant.json"
+df_toronto <- stream_in(file(path), flatten = TRUE)
+
+#path = "C:/Users/Swastik/Desktop/MastersDegree_CS/Semester_2/AppliedStatisticalModelling/ass_2/data/_all/business.json"
+#df_original <- stream_in(file(path))
+ 
+#df_toronto <- flatten(df_toronto)
+#df_toronto$neighborhood
+
+```
+
+
+```{r}
+
+df_indian <- df_toronto[str_detect(df_toronto$categories, "India|india|INDIA"),] 
+
+nrow(df_indian)
+df_indian_open <- df_indian[df_indian$is_open == 1,]
+df_indian_open_min_4review <- df_indian_open[df_indian_open$review_count > 3,]
+
+df_ek_indian <- df_indian[df_indian$neighborhood == "Etobicoke",]
+df_sb_indian <- df_indian[df_indian$neighborhood == "Scarborough",]
+df_ek_indian_open_min_4review <- df_indian_open_min_4review[df_indian_open_min_4review$neighborhood == "Etobicoke",]
+df_sb_indian_open_min_4review <- df_indian_open_min_4review[df_indian_open_min_4review$neighborhood == "Scarborough",]
+
+
+df_indian_open_min_4review$neighborhood <- factor(df_indian_open_min_4review$neighborhood)
+nlevels(df_indian_open_min_4review$neighborhood)
+df_indian_open_min_4review$neighborhood <- as.numeric(df_indian_open_min_4review$neighborhood)
+
+nrow(df_indian_open)
+nrow(df_indian_open_min_4review)
+nrow(df_ek_indian)
+nrow(df_sb_indian)
+nrow(df_ek_indian_open_min_4review)
+nrow(df_sb_indian_open_min_4review)
+
+mean(df_indian_open_min_4review$stars)
+mean(df_ek_indian_open_min_4review$stars)
+mean(df_sb_indian_open_min_4review$stars)
+mean(df_ek_indian$stars)
+mean(df_sb_indian$stars)
+```
+
+```{r}
+df_ek_indian$business_id
+x <- df_indian_open_min_4review[df_indian_open_min_4review$business_id == "ZPhQyUO9MY5xNEcTqZOrTQ",]
+x
+```
+
+```{r}
+ggplot(df_ek_indian) + geom_boxplot(aes(x = reorder(neighborhood, stars, median), stars, fill = reorder(neighborhood, stars, median)), show.legend=TRUE)
+```
+```{r}
+ggplot(df_sb_indian) + geom_boxplot(aes(x = reorder(neighborhood, stars, median), stars, fill = reorder(neighborhood, stars, median)), show.legend=TRUE)
+```
+
+```{r}
+ggplot(df_indian_open_min_4review[df_indian_open_min_4review$neighborhood == 14 | df_indian_open_min_4review$neighborhood == 33,]) + geom_boxplot(aes(x = reorder(neighborhood, stars, median), stars, fill = reorder(neighborhood, stars, median)), show.legend=FALSE)
+```
+
+
+```{r}
+ggplot(df_indian_open_min_4review[df_indian_open_min_4review$neighborhood == 33|df_indian_open_min_4review$neighborhood == 14,], aes(x = neighborhood, y = stars)) + 
+  geom_violin(aes(x = reorder(neighborhood, stars, median), stars, fill = reorder(neighborhood, stars, median)), show.legend = FALSE)
+```
+```
+
+```{r}
+ggplot(df_indian_open_min_4review) + geom_boxplot(aes(x = reorder(neighborhood, stars, median), stars, fill = reorder(neighborhood, stars, median)), show.legend=FALSE)
+```
+
+```{r}
+#stars Vs count 
+ggplot(df_sb_indian_open_min_4review, aes(stars)) + stat_bin()
+
+```
+
+```{r}
+#stars Vs count 
+ggplot(df_ek_indian_open_min_4review, aes(stars)) + stat_bin()
+
+```
+
+
+```{r}
+
+# neighbourhood vs count
+ggplot(df_indian_open_min_4review, aes(x = reorder(neighborhood, neighborhood, length))) + stat_count()
+```
+ 
+
+```{r}
+df2 <- df_indian_open_min_4review[df_indian_open_min_4review$business_id %in% c("OGSWuGLLW_8TBmQ_wWhdEQ","YLeAUkFFJri_21uTkyrVFg"),]
+df2
+
+```
+
+```{r}
+df2 <- df_indian_open_min_4review[df_indian_open_min_4review$neighborhood %in% c(14,33),]
+
+#Etobicoke : 14
+#Scarborough : 33
+
+
+fit_1 <- compare_m_gibbs(df2$stars, factor(df2$neighborhood))
+
+#fit_1 <- compare_m_gibbs(df_indian_open_min_4review$stars, factor(df_indian_open_min_4review$neighborhood))
+
+apply(fit_1$params, 2, mean)
+apply(fit_1$params, 2, sd)
+mean(1/sqrt(fit_1$params[, 3]))
+sd(1/sqrt(fit_1$params[, 3]))
+
+theta_hat <- apply(fit_1$theta, 2, mean)
+ggplot(data.frame(size = tapply(df_indian_open_min_4review$stars, df_indian_open_min_4review$neighborhood, length), theta_hat = theta_hat), aes(size, theta_hat)) + geom_point()
+```
+
+
+```{r}
+#Normality tests
+#p-value > 0.05 implies that we can assume the normality.
+shapiro.test(rnorm(100, mean = 5, sd = 3))
+shapiro.test(runif(100, min = 2, max = 4))
+
+#Bell Shape == Normal distribution
+ggdensity(rnorm(100, mean = 5, sd = 3), 
+          main = "Density plot of ratings",
+          xlab = "Ratings")
+
+#If points are close to the 45 degree line -> normal distribution
+ggqqplot(rnorm(100, mean = 5, sd = 3)) 
+
+shapiro.test(df_ek_indian_open_min_4review$stars)
+ggdensity(df_indian_open_min_4review$stars, 
+          main = "Density plot of ratings",
+          xlab = "Ratings")
+
+ggqqplot(df_ek_indian_open_min_4review$stars)
+
+```
+

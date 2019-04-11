@@ -1,0 +1,287 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(zoo)
+library(httr)
+library(readr)
+library(caret)
+library(ggpubr)
+library(plotly)
+library(mclust)
+library(ggplot2)
+library(reshape)
+library(stringr)
+library(MCMCpack)
+library(BayesLCA)
+library(jsonlite)
+library(tidyverse)
+library(xgboost)
+library(party)
+library(glmnet)
+library(randomForest)
+
+#install.packages("glmnet")
+```
+
+```{r}
+
+##Business_Toronto_Restaurant.json
+path = "C:/Users/Swastik/Desktop/MastersDegree_CS/Semester_2/AppliedStatisticalModelling/ass_2/data/Business_Toronto_Restaurant.json"
+df_toronto   <- stream_in(file(path), flatten = TRUE)
+#Keep only Restaurants
+df_toronto_2 <- df_toronto[str_detect(df_toronto$categories, "Restaurants|restaurant"),] 
+
+#df_toronto_2 <- df_toronto_2[df_toronto_2$is_open == 0,]
+#path_r = "C:/Users/Swastik/Desktop/MastersDegree_CS/Semester_2/AppliedStatisticalModelling/ass_2/data/Review_Toronto_Restaurant.json"
+#df_review   <- stream_in(file(path_r), flatten = TRUE)
+
+#Mark all operating day with a single value
+df_toronto_2$hours.Sunday[!is.na(df_toronto_2$hours.Sunday)] <- 99
+df_toronto_2$hours.Monday[!is.na(df_toronto_2$hours.Monday)] <- 99
+df_toronto_2$hours.Tuesday[!is.na(df_toronto_2$hours.Tuesday)] <- 99
+df_toronto_2$hours.Wednesday[!is.na(df_toronto_2$hours.Wednesday)] <- 99
+df_toronto_2$hours.Thursday[!is.na(df_toronto_2$hours.Thursday)] <- 99
+df_toronto_2$hours.Friday[!is.na(df_toronto_2$hours.Friday)] <- 99
+df_toronto_2$hours.Saturday[!is.na(df_toronto_2$hours.Saturday)] <- 99
+
+ 
+
+#nrow(df_toronto_2)
+#print(df_toronto_2)
+#colnames(df_toronto_2)
+#print((( unique( df_toronto$hours.Friday) )))
+```
+```{r}
+
+#Replace NA
+df_toronto_2[is.na(df_toronto_2)] <- -1
+
+#respresent categorical variables used in regression as numeric factors
+df_toronto_2[,3] <- as.numeric(factor(df_toronto_2[,3]))
+for(i in 7:9)#9 can be changed to 9->10 here
+  df_toronto_2[,i] <- as.numeric(factor(df_toronto_2[,i]))
+
+for(i in 14:93)
+  df_toronto_2[,i] <- as.numeric(factor(df_toronto_2[,i]))
+
+#Check for single-valued cols
+for(i in 1:93)
+{
+  if(length(( unique( df_toronto_2[,i]) )) > 6)
+  {
+      print(colnames(df_toronto_2)[i])
+      print(length(( unique( df_toronto_2[,i]) )))
+  }
+}
+
+
+
+#split = sample(c(TRUE, FALSE), nrow(df_toronto_2), replace=TRUE, prob=c(0.75, 0.25))
+#df<- df_toronto_2
+#df_toronto_2 = df[split, ]
+#df_toronto_2_test = df[!split, ]
+```
+```{r}
+
+#df_toronto_2_closed <- df_toronto_2[df_toronto_2$is_open == 0,]
+y <- df_toronto_2$is_open
+x <- df_toronto_2
+x <- within(x, rm(neighborhood))
+x <- within(x, rm(postal_code))
+x <- within(x, rm(business_id))
+x <- within(x, rm(name))
+x <- within(x, rm(address))
+x <- within(x, rm(city))
+x <- within(x, rm(state))
+x <- within(x, rm(categories))
+x <- within(x, rm(latitude))
+x <- within(x, rm(longitude))
+#colnames(x)
+#y
+x
+```
+
+```{r}
+#NOT REQUIRED ANYMORE
+x <- within(x, rm(attributes.BusinessAcceptsCreditCards))
+x <- within(x, rm(attributes.RestaurantsPriceRange2))
+x <- within(x, rm(attributes.WheelchairAccessible))
+x <- within(x, rm(attributes.NoiseLevel ))
+x <- within(x, rm(attributes.RestaurantsAttire))
+x <- within(x, rm(attributes.RestaurantsTableService))
+x <- within(x, rm(attributes.OutdoorSeating))
+x <- within(x, rm(attributes.RestaurantsCounterService))
+x <- within(x, rm(attributes.HairSpecializesIn.curly))
+x <- within(x, rm(attributes.HairSpecializesIn.perms))
+x <- within(x, rm(attributes.HairSpecializesIn.kids))
+ 
+x <- within(x, rm(longitude))
+x <- within(x, rm(attributes.Open24Hours))
+x <- within(x, rm(attributes.AcceptsInsurance))
+x <- within(x, rm(attributes.BusinessParking.validated))
+x <- within(x, rm(attributes.HairSpecializesIn.coloring))
+x <- within(x, rm(attributes.HairSpecializesIn.extensions ))
+x <- within(x, rm(attributes.GoodForMeal.dessert))
+x <- within(x, rm(attributes.GoodForMeal.brunch))
+x <- within(x, rm(attributes.GoodForMeal.latenight))
+x <- within(x, rm(attributes.BusinessParking.street))
+ 
+```
+
+
+```{r}
+
+corMatrix <- cor( x, y)
+min10 <- which(corMatrix<=sort(corMatrix)[10], arr.ind = TRUE)
+max10 <- which(-corMatrix<=sort(-corMatrix)[17], arr.ind = TRUE)
+#corMatrix
+#min10
+max10
+```
+
+
+```{r}
+
+ 
+fit_mcmc_logit <- MCMClogit(x$is_open ~ x$review_count + x$attributes.Caters + x$stars + x$attributes.WiFi + x$attributes.BikeParking + x$attributes.Ambience.hipster + x$attributes.Ambience.casual + x$hours.Sunday +  x$attributes.Ambience.touristy + x$attributes.Ambience.casual + x$attributes.Ambience.romantic + x$attributes.RestaurantsDelivery + x$attributes.RestaurantsTakeOut, data = x,  burnin = 100, mcmc=50000, thin = 10, tune = 0.4, beta.start = 0)
+
+plot(fit_mcmc_logit)
+acf(fit_mcmc_logit)
+raftery.diag(fit_mcmc_logit)
+```
+
+```{r}
+```
+
+```{r}
+
+X <- within(x, rm(is_open))
+X <- as.matrix(X[, -7])
+X <- apply(X, 2, scale)
+Y = factor(x$is_open)
+
+
+fit_cv <- cv.glmnet(X, Y, family = "binomial")
+plot(fit_cv)
+coef(fit_cv, s=0.02)
+coef(fit_cv, s="lambda.min")
+coef(fit_cv, s="lambda.1se")
+
+pred1 <- predict(fit_cv, newx = X, s="lambda.min", type = "class")
+confusionMatrix(data = factor(pred1), reference = factor(Y))
+pred1 <- predict(fit_cv, newx = X, s="lambda.1se", type = "response")
+boxplot(pred1 ~ Y)
+
+pred2 <- predict(fit_cv, newx = X, s="lambda.1se", type = "class")
+confusionMatrix(data = factor(pred2), reference = factor(Y))
+pred2 <- predict(fit_cv, newx = X, s="lambda.1se", type = "response")
+boxplot(pred2 ~ Y)
+```
+
+```{r}
+fit_glm <-  glm(x$is_open~. ,data = x, family = binomial())
+
+fit_glm <-  glm(x$is_open~ x$stars + x$review_count + x$attributes.BusinessAcceptsCreditCards + x$attributes.GoodForKids  + x$attributes.WheelchairAccessible + x$attributes.Caters + x$attributes.WiFi + x$attributes.RestaurantsTakeOut + x$attributes.RestaurantsTableService + x$attributes.OutdoorSeating + x$attributes.RestaurantsDelivery + x$attributes.BikeParking + x$attributes.HappyHour + x$attributes.BusinessParking.street + x$attributes.GoodForMeal.dessert  + x$attributes.GoodForMeal.breakfast + x$attributes.GoodForMeal.brunch + x$attributes.BusinessParking.lot ,data = x, family = binomial())
+
+
+fit_glm <-  glm(x$is_open~ x$stars + x$review_count + x$attributes.BusinessAcceptsCreditCards + x$attributes.WheelchairAccessible + x$attributes.Caters + x$attributes.WiFi + x$attributes.RestaurantsTakeOut + x$attributes.RestaurantsTableService + x$attributes.OutdoorSeating + x$attributes.RestaurantsDelivery + x$attributes.BikeParking + x$attributes.HappyHour + x$attributes.BusinessParking.street + x$attributes.GoodForMeal.dessert  + x$attributes.GoodForMeal.breakfast + x$attributes.GoodForMeal.brunch + x$attributes.BusinessParking.lot ,data = x, family = binomial())
+
+
+```
+
+Important variables:
+
+x$review_count                           0.012483   0.001043  11.971  < 2e-16 ***
+x$attributes.BusinessAcceptsCreditCards -0.430736   0.028658 -15.030  < 2e-16 ***
+x$attributes.RestaurantsTableService    -0.361256   0.037564  -9.617  < 2e-16 ***
+x$attributes.BikeParking                 0.585938   0.027836  21.049  < 2e-16 ***
+x$attributes.BusinessParking.street     -0.213254   0.038907  -5.481 4.23e-08 ***
+x$attributes.OutdoorSeating             -0.219563   0.041829  -5.249 1.53e-07 ***
+x$hours.Monday                           0.001327   0.000268   4.951 7.38e-07 ***
+x$attributes.GoodForMeal.breakfast       0.759264   0.163020   4.658 3.20e-06 ***
+x$attributes.RestaurantsDelivery         0.172573   0.039153   4.408 1.05e-05 ***
+x$attributes.WheelchairAccessible       -0.112698   0.025963  -4.341 1.42e-05 ***
+x$attributes.RestaurantsTakeOut          0.174470   0.040662   4.291 1.78e-05 ***
+x$attributes.HappyHour                   0.194193   0.045375   4.280 1.87e-05 ***
+x$attributes.WiFi                        0.117375   0.029022   4.044 5.25e-05 ***
+x$stars                                 -0.082867   0.020571  -4.028 5.62e-05 ***
+```{r}
+fit_glm
+plot(fit_glm)
+# Use your model to make predictions, in this example newdata = training set, but replace with your test set  
+pdata <- predict(fit_glm, newdata = x, type = "response")
+nlevels(factor( as.numeric(pdata>0.5)))
+nlevels(factor(x$is_open))
+# use caret and compute a confusion matrix
+confusionMatrix(data = factor(as.numeric(pdata>0.5)), reference = factor(x$is_open))
+
+```
+
+
+
+          Reference
+Prediction    0    1
+         0 1041  388
+         1 1139 4580
+   
+
+attributes.GoodForMeal.brunch
+attributes.GoodForMeal.dessert      
+attributes.BusinessParking.lot
+x$review_count                           0.012483   0.001043  11.971  < 2e-16 ***
+x$attributes.BusinessAcceptsCreditCards -0.430736   0.028658 -15.030  < 2e-16 ***
+x$attributes.RestaurantsTableService    -0.361256   0.037564  -9.617  < 2e-16 ***
+x$attributes.BikeParking                 0.585938   0.027836  21.049  < 2e-16 ***
+x$attributes.BusinessParking.street     -0.213254   0.038907  -5.481 4.23e-08 ***
+x$attributes.OutdoorSeating             -0.219563   0.041829  -5.249 1.53e-07 ***
+x$hours.Monday                           0.001327   0.000268   4.951 7.38e-07 ***
+x$hours.Sunday                           3.751e-01  1.050e-01  3.572 0.000355 ***
+x$attributes.GoodForMeal.breakfast       0.759264   0.163020   4.658 3.20e-06 ***
+x$attributes.RestaurantsDelivery         0.172573   0.039153   4.408 1.05e-05 ***
+x$attributes.WheelchairAccessible       -0.112698   0.025963  -4.341 1.42e-05 ***
+x$attributes.RestaurantsTakeOut          0.174470   0.040662   4.291 1.78e-05 ***
+x$attributes.HappyHour                   0.194193   0.045375   4.280 1.87e-05 ***
+x$attributes.WiFi                        0.117375   0.029022   4.044 5.25e-05 ***
+x$stars                                 -0.082867   0.020571  -4.028 5.62e-05 ***
+
+
+```{r}
+fit_RF <-  randomForest(factor(x$is_open) ~ x$stars + x$review_count + x$attributes.BusinessAcceptsCreditCards + x$attributes.WheelchairAccessible + x$attributes.Caters + x$attributes.WiFi + x$attributes.RestaurantsTakeOut + x$attributes.RestaurantsTableService + x$attributes.OutdoorSeating + x$attributes.RestaurantsDelivery + x$attributes.BikeParking + x$attributes.HappyHour + x$attributes.BusinessParking.street + x$attributes.GoodForMeal.dessert  + x$attributes.GoodForMeal.breakfast + x$attributes.GoodForMeal.brunch + x$attributes.BusinessParking.lot, data = x)
+
+plot(fit_RF)
+ print(fit_RF)
+varImpPlot(fit_RF, sort = T, n.var=10, main="Top 10 - Variable Importance")
+
+var.imp = data.frame(importance(fit_RF, type=2))
+var.imp$Variables = row.names(var.imp)  
+print(var.imp[order(var.imp$MeanDecreaseGini,decreasing = T),])
+confusionMatrix(data = predict(fit_RF,x ), reference = factor(x$is_open))
+```
+ 
+
+```{r}
+#Normality tests
+#p-value > 0.05 implies that we can assume the normality.
+shapiro.test(rnorm(100, mean = 5, sd = 3))
+shapiro.test(runif(100, min = 2, max = 4))
+
+#Bell Shape == Normal distribution
+ggdensity(rnorm(100, mean = 5, sd = 3), 
+          main = "Density plot of ratings",
+          xlab = "Ratings")
+
+#If points are close to the 45 degree line -> normal distribution
+ggqqplot(rnorm(100, mean = 5, sd = 3)) 
+
+shapiro.test(df_ek_indian_open_min_4review$stars)
+ggdensity(df_indian_open_min_4review$stars, 
+          main = "Density plot of ratings",
+          xlab = "Ratings")
+
+ggqqplot(df_ek_indian_open_min_4review$stars)
+
+```
+  
